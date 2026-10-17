@@ -1,0 +1,227 @@
+// Prisma Schema for DineDesk Restaurant Ordering & Table Management System
+// Database Provider: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  KITCHEN_STAFF
+  WAITER
+  ADMIN
+  MANAGER
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+enum OrderStatus {
+  PLACED
+  CONFIRMED
+  PREPARING
+  READY
+  SERVED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CARD
+  UPI
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLEANING
+}
+
+enum TableArea {
+  INDOOR_MAIN
+  ROOFTOP_TERRACE
+  PATIO_GARDEN
+  PRIVATE_VIP_LOUNGE
+}
+
+enum ReservationStatus {
+  CONFIRMED
+  SEATED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  orders    Order[]
+  reservations Reservation[]
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?
+  menuItems   MenuItem[]
+}
+
+model MenuItem {
+  id              String               @id @default(uuid())
+  name            String
+  description     String
+  price           Decimal              @db.Decimal(10, 2)
+  categoryId      String
+  category        Category             @relation(fields: [categoryId], references: [id])
+  dietary         String               // "veg" | "non-veg" | "vegan" | "gluten-free"
+  spiceLevel      Int                  @default(0) // 0 to 3
+  calories        Int?
+  prepTimeMinutes Int                  @default(15)
+  image           String
+  isAvailable     Boolean              @default(true)
+  isChefSpecial   Boolean              @default(false)
+  isBestSeller    Boolean              @default(false)
+  optionGroups    MenuItemOptionGroup[]
+  orderItems      OrderItem[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([categoryId])
+}
+
+model MenuItemOptionGroup {
+  id         String           @id @default(uuid())
+  menuItemId String
+  menuItem   MenuItem         @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  name       String
+  required   Boolean          @default(false)
+  options    MenuItemOption[]
+}
+
+model MenuItemOption {
+  id        String              @id @default(uuid())
+  groupId   String
+  group     MenuItemOptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name      String
+  price     Decimal             @db.Decimal(10, 2) @default(0.00)
+}
+
+model RestaurantTable {
+  id               String      @id @default(uuid())
+  number           String      @unique
+  capacity         Int
+  area             TableArea   @default(INDOOR_MAIN)
+  status           TableStatus @default(AVAILABLE)
+  currentGuestName String?
+  occupiedSince    DateTime?
+  orders           Order[]
+  reservations     Reservation[]
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+model Order {
+  id                      String         @id @default(uuid())
+  orderNumber             String         @unique
+  type                    OrderType      @default(DINE_IN)
+  status                  OrderStatus    @default(PLACED)
+  customerName            String
+  customerPhone           String
+  customerEmail           String?
+  tableNumber             String?
+  deliveryAddress         String?
+  notes                   String?
+  paymentMethod           PaymentMethod  @default(CARD)
+  paymentStatus           PaymentStatus  @default(PENDING)
+  subtotal                Decimal        @db.Decimal(10, 2)
+  discount                Decimal        @db.Decimal(10, 2) @default(0.00)
+  promoCode               String?
+  tax                     Decimal        @db.Decimal(10, 2)
+  serviceCharge           Decimal        @db.Decimal(10, 2) @default(0.00)
+  tip                     Decimal        @db.Decimal(10, 2) @default(0.00)
+  total                   Decimal        @db.Decimal(10, 2)
+  estimatedPrepTimeMinutes Int           @default(20)
+  readyAt                 DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  userId                  String?
+  user                    User?          @relation(fields: [userId], references: [id])
+  tableId                 String?
+  table                   RestaurantTable? @relation(fields: [tableId], references: [id])
+  items                   OrderItem[]
+
+  @@index([status])
+  @@index([orderNumber])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id                  String   @id @default(uuid())
+  orderId             String
+  order               Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId          String
+  menuItem            MenuItem @relation(fields: [menuItemId], references: [id])
+  quantity            Int      @default(1)
+  selectedOptionsJson String?  // JSON stringified options
+  specialInstructions String?
+  price               Decimal  @db.Decimal(10, 2)
+}
+
+model Reservation {
+  id              String            @id @default(uuid())
+  bookingCode     String            @unique
+  customerName    String
+  customerPhone   String
+  customerEmail   String
+  guestsCount     Int
+  date            DateTime
+  timeSlot        String
+  seatingArea     TableArea         @default(INDOOR_MAIN)
+  specialRequests String?
+  occasion        String?
+  status          ReservationStatus @default(CONFIRMED)
+  tableId         String?
+  table           RestaurantTable?  @relation(fields: [tableId], references: [id])
+  userId          String?
+  user            User?             @relation(fields: [userId], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([bookingCode])
+  @@index([date])
+}
+
+model PromoCode {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  discountPercent Int
+  minSpend        Decimal  @db.Decimal(10, 2)
+  description     String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+}
